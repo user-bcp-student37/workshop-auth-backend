@@ -17,6 +17,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.CoreMatchers.is;
@@ -31,8 +32,8 @@ class AuthResourceTest {
     LegacyDatabase database;
 
     @Test
-    void logsInWithWorkshopUser() {
-        given()
+    void logsInWithWorkshopUser() throws Exception {
+        Response response = given()
                 .contentType("application/json")
                 .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"angular-workshop\"}")
                 .when().post("/auth/login")
@@ -43,7 +44,10 @@ class AuthResourceTest {
                 .body("user.role", is("STUDENT"))
                 .body("token", notNullValue())
                 .body("expiresIn", is(3600))
-                .body("debug", is("authenticated-with-legacy-flow"));
+                .body("debug", is("authenticated-with-legacy-flow"))
+                .extract().response();
+
+        assertSignedToken(response.jsonPath().getString("token"), "student", "STUDENT");
     }
 
     @Test
@@ -173,6 +177,43 @@ class AuthResourceTest {
     }
 
     @Test
+    void escapesHtmlInDisplayName() throws Exception {
+        String username = "h06-html-" + UUID.randomUUID();
+        String password = "test-only-h06-password";
+        String displayName = "<b>A&B</b>";
+
+        try (Connection connection = DriverManager.getConnection(databaseUrl())) {
+            try (var schema = connection.createStatement()) {
+                schema.executeUpdate("CREATE TABLE IF NOT EXISTS legacy_users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT NOT NULL, display_name TEXT NOT NULL, role TEXT NOT NULL)");
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO legacy_users(username,password,display_name,role) VALUES (?,?,?,?)")) {
+                statement.setString(1, username);
+                statement.setString(2, BcryptUtil.bcryptHash(password));
+                statement.setString(3, displayName);
+                statement.setString(4, "TEST");
+                statement.executeUpdate();
+            }
+        }
+
+        try {
+            given()
+                    .contentType("application/json")
+                    .body("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}")
+                    .when().post("/auth/login")
+                    .then()
+                    .statusCode(200)
+                    .body("user.displayName", is("&lt;b&gt;A&amp;B&lt;/b&gt;"));
+        } finally {
+            try (Connection connection = DriverManager.getConnection(databaseUrl());
+                 PreparedStatement statement = connection.prepareStatement("DELETE FROM legacy_users WHERE username=?")) {
+                statement.setString(1, username);
+                statement.executeUpdate();
+            }
+        }
+    }
+
+    @Test
     void rejectsUsernameContainingQuote() {
         given()
                 .contentType("application/json")
@@ -184,25 +225,28 @@ class AuthResourceTest {
 
     @Test
     void tokenHasVerifiableSignatureAndExplicitClaims() throws Exception {
-        String token = LegacyTokenUtil.create("test-user", "TEST");
+        assertSignedToken(LegacyTokenUtil.create("test-user", "TEST"), "test-user", "TEST");
+    }
+
+    private static void assertSignedToken(String token, String username, String role) throws Exception {
         String[] sections = token.split("\\.");
-        org.junit.jupiter.api.Assertions.assertEquals(3, sections.length);
+        assertEquals(3, sections.length);
 
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode header = objectMapper.readTree(Base64.getUrlDecoder().decode(sections[0]));
         JsonNode claims = objectMapper.readTree(Base64.getUrlDecoder().decode(sections[1]));
-        org.junit.jupiter.api.Assertions.assertEquals("RS256", header.path("alg").asText());
-        org.junit.jupiter.api.Assertions.assertEquals("test-user", claims.path("sub").asText());
-        org.junit.jupiter.api.Assertions.assertEquals("TEST", claims.path("role").asText());
+        assertEquals("RS256", header.path("alg").asText());
+        assertEquals(username, claims.path("sub").asText());
+        assertEquals(role, claims.path("role").asText());
         long issuedAt = claims.path("iat").asLong();
         long expiresAt = claims.path("exp").asLong();
-        org.junit.jupiter.api.Assertions.assertTrue(issuedAt <= Instant.now().getEpochSecond());
-        org.junit.jupiter.api.Assertions.assertEquals(3600, expiresAt - issuedAt);
+        assertTrue(issuedAt <= Instant.now().getEpochSecond());
+        assertEquals(3600, expiresAt - issuedAt);
 
         Signature signature = Signature.getInstance("SHA256withRSA");
         signature.initVerify(JwtTestResource.verificationKey());
         signature.update((sections[0] + "." + sections[1]).getBytes(StandardCharsets.US_ASCII));
-        org.junit.jupiter.api.Assertions.assertTrue(signature.verify(Base64.getUrlDecoder().decode(sections[2])));
+        assertTrue(signature.verify(Base64.getUrlDecoder().decode(sections[2])));
 
         byte[] alteredSignature = Base64.getUrlDecoder().decode(sections[2]);
         alteredSignature[0] ^= 1;
