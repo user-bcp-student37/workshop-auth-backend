@@ -1,6 +1,6 @@
 # Plan de corrección
 
-`HALLAZGOS.md` contiene tres items en estado `Pendiente`: H-05, H-06 y H-07. H-04 está `Resuelto`; no se cuenta como un cuarto pendiente ni se reabre en este plan.
+`HALLAZGOS.md` contiene dos items en estado `Pendiente`: H-05 y H-06. H-04 y H-07 están `Resuelto`; no se reabren en este plan.
 
 ## Item: La respuesta de error expone detalles internos
 
@@ -43,20 +43,12 @@
 
 ## Item: `AuthResource.login` concentra responsabilidades
 
-**Hallazgo:** H-07 de `HALLAZGOS.md`, estado `Pendiente`. Un método combina validación de request, autenticación, acceso SQLite, creación de token y respuesta con anidamiento profundo.
+**Hallazgo:** H-07 de `HALLAZGOS.md`, estado `Resuelto`.
 
-**Problema:** responsabilidades acopladas dificultan probar cada parte y aumentan el riesgo de duplicación o regresión del contrato al cambiar una regla.
+**Cambio realizado:** `AuthResource` conserva la traducción HTTP; `AuthService` coordina la validación, consulta de credenciales y emisión del token; `LegacyDatabase` implementa `UserRepository`; `JwtTokenIssuer` adapta la generación JWT; `LoginResponseMapper` arma el DTO de respuesta y conserva el escaping del `displayName`.
 
-**Cambio propuesto:** mantener `AuthResource` como adaptador HTTP; extraer orquestación de negocio a `AuthService`, persistencia a `UserRepository`, seguridad/token a su componente de responsabilidad única y mapear el resultado a DTOs de salida, sin devolver `UserRecord`. Aplicar guard clauses, nombres descriptivos, una responsabilidad por método y constantes para valores no triviales. Este apartado no cambia la política de errores H-05 ni el análisis de dependencias H-06; no repetir en él sus correcciones.
+**Pruebas añadidas:** `LoginRequestValidatorTest` comprueba las reglas de entrada; `AuthServiceTest` comprueba que la entrada inválida no alcanza colaboradores, que credenciales válidas consultan repositorio/emisor y que el resultado se mapea; las pruebas HTTP existentes verifican el contrato completo.
 
-**Archivos a tocar:**
+**Validación ejecutada el 2026-10-20:** `mvn -Dquarkus.http.test-port=18084 verify`; `BUILD SUCCESS`, 31 tests, 0 fallos, 0 errores, 0 omitidos. JaCoCo: 98.2% global (111/113 líneas); todas las clases nuevas y `AuthResource` tienen 100%. La matriz HTTP, JWT y el fallo de firma permanecen cubiertos.
 
-- `src/main/java/com/bcp/workshop/auth/AuthResource.java`: dejar en el recurso la traducción HTTP y delegación.
-- `src/main/java/com/bcp/workshop/auth/LegacyDatabase.java` o un repositorio nuevo: aislar persistencia sin cambiar SQL, hashes o migración.
-- Nuevos archivos en `src/main/java/com/bcp/workshop/auth/` solo para servicio, DTOs o componentes necesarios por la separación.
-- `src/test/java/com/bcp/workshop/auth/AuthResourceTest.java` y tests unitarios nuevos para servicio, repositorio y mapeo.
-- `HALLAZGOS.md`: cambiar H-07 a `Resuelto` al completar pruebas y refactor.
-
-**Prueba de caracterización previa:** completar/ejecutar la matriz HTTP de `docs/ENDPOINTS.md`: login válido; body ausente; username/password ausentes o en blanco; JSON malformado; credenciales inválidas; método y media types no admitidos; error `500` controlado; `client` omitido y propiedad desconocida. Registrar ruta, media types, status, claves y tipos para cada caso antes de mover responsabilidades.
-
-**Prueba posterior:** repetir sin cambios la matriz HTTP y añadir pruebas unitarias independientes por capa y mapeo. Medir JaCoCo con al menos 85% de cobertura del código modificado. Mantener los gates existentes y verificar en revisión que no haya métodos con múltiples responsabilidades, duplicación, anidamiento profundo ni valores mágicos.
+**Incidencia fuera de alcance:** durante `AuthSigningFailureTest`, `LegacyDatabase.initialize` sigue registrando `No suitable driver found` en el perfil de clave ausente; el test espera el `500` de firma y pasa. Se conserva como pendiente de investigación, no como parte de H-07.

@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 @ApplicationScoped
-public class LegacyDatabase {
+public class LegacyDatabase implements UserRepository {
     private static final String DB_URL = System.getenv().getOrDefault("AUTH_DB_URL", "jdbc:sqlite:./data/workshop.db");
     private static final Pattern BCRYPT_HASH_PATTERN = Pattern.compile("\\$2[aby]\\$\\d{2}\\$[./A-Za-z0-9]{53}");
 
