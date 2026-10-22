@@ -1,17 +1,21 @@
 package com.bcp.workshop.auth;
 
-import java.nio.charset.StandardCharsets;
+import io.smallrye.jwt.build.Jwt;
+
 import java.time.Instant;
-import java.util.Base64;
 
 public final class LegacyTokenUtil {
-    private static final String SECRET = "WORKSHOP_SECRET_2026";
+    public static final int TOKEN_EXPIRATION_SECONDS = 3600;
 
     private LegacyTokenUtil() {}
 
     public static String create(String username, String role) {
-        long expiry = Instant.now().plusSeconds(3600).getEpochSecond();
-        String value = username + "|" + role + "|" + expiry + "|" + SECRET;
-        return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+        Instant issuedAt = Instant.now();
+        return Jwt.claims()
+                .claim("sub", username)
+                .claim("role", role)
+                .claim("iat", issuedAt.getEpochSecond())
+                .claim("exp", issuedAt.plusSeconds(TOKEN_EXPIRATION_SECONDS).getEpochSecond())
+                .sign();
     }
 }
