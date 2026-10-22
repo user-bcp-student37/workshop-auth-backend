@@ -85,9 +85,8 @@ public class LegacyDatabase implements UserRepository {
                 return new UserRecord(result.getLong("id"), result.getString("username"), result.getString("display_name"), result.getString("role"));
             }
         } catch (Exception error) {
-            error.printStackTrace();
+            throw new IllegalStateException("Credential lookup failed", error);
         }
-        return null;
     }
 
     private record StoredPassword(long userId, String password) {}

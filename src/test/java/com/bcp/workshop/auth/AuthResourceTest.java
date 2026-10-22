@@ -62,6 +62,32 @@ class AuthResourceTest {
     }
 
     @Test
+    void returnsGenericInternalErrorWhenCredentialLookupFails() throws Exception {
+        database.initialize();
+        String backupTable = "legacy_users_h08_backup_" + UUID.randomUUID().toString().replace("-", "");
+        try (Connection connection = DriverManager.getConnection(databaseUrl());
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("ALTER TABLE legacy_users RENAME TO " + backupTable);
+        }
+
+        try {
+            given()
+                    .contentType("application/json")
+                    .body("{\"username\":\"student\",\"password\":\"Workshop123!\"}")
+                    .when().post("/auth/login")
+                    .then()
+                    .statusCode(500)
+                    .body("message", is("Internal server error"))
+                    .body("exception", is("INTERNAL_SERVER_ERROR"));
+        } finally {
+            try (Connection connection = DriverManager.getConnection(databaseUrl());
+                 var statement = connection.createStatement()) {
+                statement.executeUpdate("ALTER TABLE " + backupTable + " RENAME TO legacy_users");
+            }
+        }
+    }
+
+    @Test
     void rejectsUnknownUsername() {
         given()
                 .contentType("application/json")
@@ -124,6 +150,45 @@ class AuthResourceTest {
                 .then()
                 .statusCode(400)
                 .body("message", is("Password is required"));
+    }
+
+    @Test
+    void authenticatesPasswordWithoutTrimmingSignificantWhitespace() throws Exception {
+        String username = "h08-whitespace-" + UUID.randomUUID();
+        String password = "  pass phrase with spaces  ";
+
+        try (Connection connection = DriverManager.getConnection(databaseUrl());
+             PreparedStatement statement = connection.prepareStatement(
+                     "INSERT INTO legacy_users(username,password,display_name,role) VALUES (?,?,?,?)")) {
+            statement.setString(1, username);
+            statement.setString(2, BcryptUtil.bcryptHash(password));
+            statement.setString(3, "Whitespace Test");
+            statement.setString(4, "TEST");
+            statement.executeUpdate();
+        }
+
+        try {
+            given()
+                    .contentType("application/json")
+                    .body("{\"username\":\"" + username + "\",\"password\":\"  pass phrase with spaces  \"}")
+                    .when().post("/auth/login")
+                    .then()
+                    .statusCode(200)
+                    .body("user.username", is(username));
+
+            given()
+                    .contentType("application/json")
+                    .body("{\"username\":\"" + username + "\",\"password\":\"pass phrase with spaces\"}")
+                    .when().post("/auth/login")
+                    .then()
+                    .statusCode(401);
+        } finally {
+            try (Connection connection = DriverManager.getConnection(databaseUrl());
+                 PreparedStatement statement = connection.prepareStatement("DELETE FROM legacy_users WHERE username=?")) {
+                statement.setString(1, username);
+                statement.executeUpdate();
+            }
+        }
     }
 
     @Test
@@ -289,6 +354,27 @@ class AuthResourceTest {
                 org.junit.jupiter.api.Assertions.assertTrue(BcryptUtil.matches("Workshop123!", passwordHash));
             }
         }
+    }
+
+    @Test
+    void bcryptDistinguishes64CharacterAsciiPasswords() {
+        String firstPassword = "a".repeat(63) + "x";
+        String differentPassword = "a".repeat(63) + "y";
+        String passwordHash = BcryptUtil.bcryptHash(firstPassword);
+
+        assertTrue(BcryptUtil.matches(firstPassword, passwordHash));
+        org.junit.jupiter.api.Assertions.assertFalse(BcryptUtil.matches(differentPassword, passwordHash));
+    }
+
+    @Test
+    void bcryptAliases64CharacterUnicodePasswordsAfter72Utf8Bytes() {
+        String sharedPrefix = Character.toString(0x00e9).repeat(36);
+        String firstPassword = sharedPrefix + "a".repeat(28);
+        String differentPassword = sharedPrefix + "b".repeat(28);
+        String passwordHash = BcryptUtil.bcryptHash(firstPassword);
+
+        assertTrue(BcryptUtil.matches(firstPassword, passwordHash));
+        assertTrue(BcryptUtil.matches(differentPassword, passwordHash));
     }
 
     @Test
