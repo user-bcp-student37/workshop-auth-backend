@@ -30,6 +30,8 @@ El código ejecutable está en estos archivos fuente; no se duplica aquí para e
 
 - [`AuthResourceTest.java`](../src/test/java/com/bcp/workshop/auth/AuthResourceTest.java): login, validación de request, content negotiation, errores HTTP, JWT, CORS, BCrypt y migración.
 - [`AuthSigningFailureTest.java`](../src/test/java/com/bcp/workshop/auth/AuthSigningFailureTest.java): error `500` con clave de firma ausente y aserción de valores genéricos en el cuerpo.
+- [`LoginRequestValidatorTest.java`](../src/test/java/com/bcp/workshop/auth/LoginRequestValidatorTest.java): validación unitaria de solicitud nula y credenciales ausentes, en blanco o válidas.
+- [`AuthServiceTest.java`](../src/test/java/com/bcp/workshop/auth/AuthServiceTest.java): interacción con repositorio y emisor de token, errores de validación/credenciales y mapeo de respuesta.
 - [`HealthEndpointTest.java`](../src/test/java/com/bcp/workshop/auth/HealthEndpointTest.java): health `UP`, checks vacíos y acceso sin autenticación.
 - [`HealthUnavailableEndpointTest.java`](../src/test/java/com/bcp/workshop/auth/HealthUnavailableEndpointTest.java): respuesta `503` de un check `DOWN` en perfil aislado.
 - [`TestDownHealthCheck.java`](../src/test/java/com/bcp/workshop/auth/TestDownHealthCheck.java) y [`HealthDownTestProfile.java`](../src/test/java/com/bcp/workshop/auth/HealthDownTestProfile.java): fixture y activación únicamente en test.
@@ -54,16 +56,20 @@ $env:QUARKUS_ANALYTICS_DISABLED = 'true'
 mvn '-Dquarkus.http.test-port=18084' verify
 ```
 
-Resultado ejecutado el 2026-10-19 con Quarkus 3.40.1 y Commons Text 1.15.0: código de salida `0`, `BUILD SUCCESS`; 24 tests, 0 fallos, 0 errores y 0 omitidos. `verify` generó `target/site/jacoco/jacoco.csv` y el reporte HTML `target/site/jacoco/index.html`.
+Resultado ejecutado el 2026-10-20 con Quarkus 3.40.1 y Commons Text 1.15.0: código de salida `0`, `BUILD SUCCESS`; 31 tests, 0 fallos, 0 errores y 0 omitidos. `verify` generó `target/site/jacoco/jacoco.csv` y el reporte HTML `target/site/jacoco/index.html`.
 
 Cobertura de líneas JaCoCo (método: `LINE_COVERED / (LINE_COVERED + LINE_MISSED)` del CSV generado):
 
 | clase de producción | cobertura de líneas |
 | --- | ---: |
-| `AuthResource` | 100% (25/25) |
+| `AuthResource` | 100% (13/13) |
+| `AuthService` | 100% (14/14) |
+| `LoginRequestValidator` | 100% (8/8) |
+| `LoginResponseMapper` | 100% (6/6) |
+| `JwtTokenIssuer` | 100% (3/3) |
 | `LegacyDatabase` | 96% (48/50) |
 | `LegacyTokenUtil` | 100% (7/7) |
-| Agregado de clases de producción | 97.6% (82/84) |
+| Agregado de clases de producción | 98.2% (111/113) |
 
 La clase sintética `LegacyDatabase.StoredPassword` se excluye del agregado. JaCoCo está configurado por `pom.xml` y no se modificaron sus gates.
 
